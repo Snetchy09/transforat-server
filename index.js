@@ -1,6 +1,6 @@
 import http    from "http";
 import express from "express";
-import ws      from "ws";             // npm install ws
+import { WebSocketServer } from "ws";             // npm install ws
 
 const app = express();
 // … your existing HTTP routes …
@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 
 // 2) Create WebSocket server on top of it
-const wss = new ws.Server({ noServer: true });
+const wss = new WebSocketServer({ noServer: true });
 
 // 3) Track rooms → Map<roomId, Set<ws>>
 const rooms = new Map();
