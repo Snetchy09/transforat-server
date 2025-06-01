@@ -118,38 +118,46 @@ app.post("/auth/login", async (req, res) => {
 
 // ─── ROOMS ROUTES ──────────────────────────────────
 app.post("/rooms", async (req, res) => {
-  try {
-    const { name, max_players } = req.body;
-    if (!name || !max_players) {
-      return res.status(400).send({ error: "Missing fields" });
-    }
-
-    const { data: newRoom, error: roomErr } = await supabase
-      .from("rooms")
-      .insert([{ name, max_players }])
-      .select("id, name, max_players")
-      .single();
-
-    if (roomErr) throw roomErr;
-    return res.status(201).send(newRoom);
-  } catch (err) {
-    console.error("CREATE ROOM ERROR:", err);
-    return res.status(500).send({ error: "Internal server error" });
+  // 1) Grab the JWT from the “Authorization” header
+  const auth = req.headers["authorization"];
+  if (!auth || !auth.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Authorization required" });
   }
-});
+  const token = auth.split(" ")[1];
 
-app.get("/rooms", async (req, res) => {
+  // 2) Verify the token and extract user ID
+  let decoded;
   try {
-    const { data: allRooms, error } = await supabase
-      .from("rooms")
-      .select("id, name, max_players");
-    if (error) throw error;
-    // Wrap in { result: […] } so client code matches
-    return res.status(200).send({ result: allRooms });
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
-    console.error("LIST ROOMS ERROR:", err);
-    return res.status(500).send({ error: "Internal server error" });
+    return res.status(401).json({ error: "Invalid token" });
   }
+  const hostId = decoded.id; // that is the player’s UUID
+
+  // 3) Now read name and max_players from the JSON body
+  const { name, max_players } = req.body;
+  if (!name || !max_players) {
+    return res.status(400).json({ error: "Name and max_players required" });
+  }
+
+  // 4) Insert into Supabase with host_id included
+  const { data, error } = await supabase
+    .from("rooms")
+    .insert({
+      name,
+      host_id: hostId,
+      max_players,
+      is_open: true  // or however you flagged it
+    })
+    .select("id,name,host_id,max_players"); // return whichever columns you need
+
+  if (error) {
+    console.error("CREATE ROOM ERROR:", error);
+    return res.status(500).json({ error: "Could not create room" });
+  }
+
+  // 5) Return the newly created room’s ID (and any other info)
+  return res.status(201).json({ room_id: data[0].id, name: data[0].name });
 });
 
 // ─── CHAT ROUTE ───────────────────────────────────
