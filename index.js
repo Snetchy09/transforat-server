@@ -166,8 +166,7 @@ app.post("/chat/:room_id", async (req, res) => {
 });
 
 // ─── UPGRADE TO WEBSOCKET ─────────────────────────
-import WebSocket from "ws";
-const WSServer = WebSocket.Server;
+import { WebSocketServer } from "ws";
 import http from "http";
 
 const httpServer = http.createServer(app);
