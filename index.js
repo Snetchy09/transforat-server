@@ -159,6 +159,18 @@ app.post("/rooms", async (req, res) => {
   return res.status(201).json({ room_id: data[0].id, name: data[0].name });
 });
 
+// ─── GET /rooms ─── Return a list of all rooms ─────────────────
+app.get("/rooms", async (req, res) => {
+  const { data, error } = await supabase
+    .from("rooms")
+    .select("id,name,max_players,host_id");
+  if (error) {
+    console.error("LIST ROOMS ERROR:", error);
+    return res.status(500).json({ error: "Could not fetch rooms" });
+  }
+  return res.status(200).json(data);
+});
+
 // ─── CHAT ROUTE ───────────────────────────────────
 app.post("/chat/:room_id", async (req, res) => {
   try {
