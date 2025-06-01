@@ -10,6 +10,10 @@ dotenv.config();
 
 const app = express();
 
+app.get("/ping", (_req, res) => {
+  return res.status(200).send("pong");
+});
+
 // ─── MIDDLEWARE ──────────────────────────────────
 app.use(cors());
 app.use(express.json()); 
