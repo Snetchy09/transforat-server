@@ -147,7 +147,6 @@ app.post("/rooms", async (req, res) => {
       name,
       host_id: hostId,
       max_players,
-      is_open: true  // or however you flagged it
     })
     .select("id,name,host_id,max_players"); // return whichever columns you need
 
