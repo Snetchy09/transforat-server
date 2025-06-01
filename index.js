@@ -170,7 +170,7 @@ import { WebSocketServer } from "ws";
 import http from "http";
 
 const httpServer = http.createServer(app);
-const wss = new WSServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true });
 const rooms = new Map();
 
 httpServer.on("upgrade", (req, socket, head) => {
@@ -204,7 +204,7 @@ wss.on("connection", (ws) => {
     }
     // Broadcast to other peers in the same room
     for (const peer of roomSet) {
-      if (peer !== ws && peer.readyState === WSServer.OPEN) {
+      if (peer !== ws && peer.readyState === WebSocketServer.OPEN) {
         let out = {};
         switch (msg.type) {
           case "move":
