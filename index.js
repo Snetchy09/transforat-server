@@ -16,7 +16,7 @@ app.get("/ping", (_req, res) => {
 
 // ─── MIDDLEWARE ──────────────────────────────────
 app.use(cors());
-app.use(express.json()); 
+app.use(express.json());
 // ^─── This line is crucial: it lets Express parse JSON bodies on routes.
 
 // ─── SUPABASE CLIENT (example) ───────────────────
@@ -218,13 +218,47 @@ wss.on("connection", (ws) => {
 
   ws.send(JSON.stringify({ type: "joined", room_id: ws.roomId }));
 
-  ws.on("message", (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch {
-      return;
+ws.on("message", raw => {
+  const msg = JSON.parse(raw);
+  if (msg.type === "request_first_map") {
+    // Choose a random map server‐side:
+    const maps = ["res://map1.tscn","res://map2.tscn","res://map3.tscn"];
+    const mapPath = maps[Math.floor(Math.random() * maps.length)];
+
+    // Broadcast the map to everyone in that room set:
+    const roomSet = rooms.get(ws.roomId);
+    roomSet.forEach(client => {
+      client.send(JSON.stringify({
+        type:     "map_changed",
+        map_path: mapPath
+      }));
+    });
+  }
+  // … handle other message types (move, chat, request_next_map) …
+});
+
+ws.on("close", () => {
+  const roomSet = rooms.get(ws.roomId);
+  if (roomSet) {
+    roomSet.delete(ws);
+    // If nobody is left in that set, delete the room entry entirely:
+    if (roomSet.size === 0) {
+      rooms.delete(ws.roomId);
+      // ALSO delete (or “close”) the DB row so GET /rooms no longer returns it:
+      supabase
+        .from('rooms')
+        .delete()
+        .eq('id', ws.roomId)
+        .then(({ error }) => {
+          if (error) console.error("DELETE ROOM ERROR:", error);
+        });
+    } else {
+      // otherwise, send updated player count to remaining peers:
+      broadcastPlayerCount(ws.roomId, roomSet);
     }
+  }
+});
+
     // Broadcast to other peers in the same room
     for (const peer of roomSet) {
       if (peer !== ws && peer.readyState === WebSocketServer.OPEN) {
