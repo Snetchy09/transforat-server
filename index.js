@@ -280,10 +280,9 @@ ws.on("close", () => {
   ws.on("close", () => {
     roomSet.delete(ws);
   });
-});
 
 // ─── LISTEN ───────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
-});	
+});
