@@ -274,12 +274,12 @@ ws.on("close", () => {
         }
         peer.send(JSON.stringify(out));
       }
-    }
-  });
+    });
 
   ws.on("close", () => {
     roomSet.delete(ws);
   });
+});
 
 // ─── LISTEN ───────────────────────────────────────
 const PORT = process.env.PORT || 3000;
