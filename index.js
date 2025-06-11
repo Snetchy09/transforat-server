@@ -102,7 +102,8 @@ app.post("/rooms", async (req, res) => {
     if (!name || !max_players) return res.status(400).json({ error: "Missing fields" });
 
     const { data, error } = await supabase
-      .from("rooms").insert([{ name, host_id: decoded.id, max_players }])
+      .from("rooms")
+      .insert([{ name, host_id: decoded.id, max_players }])
       .select("id,name,host_id,max_players");
     if (error) throw error;
     res.status(201).json({ room_id: data[0].id, name: data[0].name });
