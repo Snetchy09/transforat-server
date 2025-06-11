@@ -52,7 +52,10 @@ app.post("/auth/register", async (req, res) => {
     if (!email || !username || !password) return res.status(400).json({ error: "Missing fields" });
 
     const { data: existing, error: selErr } = await supabase
-      .from("players").select()* .eq("email", email).single();
+      .from("players")
+      .select("*") 
+      .eq("email", email)
+      .single();
     if (selErr && selErr.code !== "PGRST116") throw selErr;
     if (existing) return res.status(400).json({ error: "Email taken" });
 
