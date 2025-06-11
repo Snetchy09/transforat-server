@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
@@ -86,7 +86,7 @@ app.post("/auth/login", async (req, res) => {
     if (!ok) return res.status(400).json({ error: "Invalid credentials" });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, username: user.username });
+    res.json({ token: token, username: user?.username ?? "unknown" });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     res.status(500).json({ error: "Internal server error" });
