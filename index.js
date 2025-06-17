@@ -23,7 +23,7 @@ const supabase = createClient(
 async function broadcastPlayerCount(roomId, roomObj) {
   const count = roomObj.players.size;
   roomObj.players.forEach(ws => {
-    if (ws.readyState === ws.OPEN) {
+    if (ws.readyState === WebSocketServer.OPEN) {
       ws.send(JSON.stringify({ type: "player_count", count }));
     }
   });
@@ -176,6 +176,11 @@ wss.on('connection', (ws) => {
     if (room.players.size === 1) startMatch(id);
   }
 
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  ws.on('error', err => console.error('❌ WS error:', err));
+
   ws.on('message', (data) => {
     if (!canSend(ws)) return;
     let msg;
@@ -192,8 +197,21 @@ wss.on('connection', (ws) => {
     clearTimeout(room.matchTimer);
     room.players.delete(ws);
     room.spectators.delete(ws);
-    if (room.players.size === 0) rooms.delete(id);
-    else broadcastPlayerCount(id, room);
+  
+    if (room.players.size === 0) {
+      rooms.delete(id);
+      // Supabase delete wrapped in async IIFE
+      (async () => {
+        const { error } = await supabase
+          .from("rooms")
+          .delete()
+          .eq("id", id);
+        if (error) console.error("DB room delete failed:", error.message);
+        else console.log("Room deleted from DB:", id);
+      })();
+    } else {
+      broadcastPlayerCount(id, room);
+    }
   });
 });
 
