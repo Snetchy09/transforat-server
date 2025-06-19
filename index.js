@@ -6,12 +6,15 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { WebSocketServer } from "ws";
 import http from "http";
+import { v4 as uuid } from 'uuid';
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const MAP_LIST = ["res://map1.tscn","res://map2.tscn","res://map3.tscn"];
 
 // ─── SUPABASE CLIENT ─────────────────────────────────
 const supabase = createClient(
@@ -23,7 +26,7 @@ const supabase = createClient(
 async function broadcastPlayerCount(roomId, roomObj) {
   const count = roomObj.players.size;
   roomObj.players.forEach(ws => {
-    if (ws.readyState === WebSocketServer.OPEN) {
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "player_count", count }));
     }
   });
@@ -137,31 +140,88 @@ const wss = new WebSocketServer({ noServer: true });
 // Room state: { players, spectators, state, matchTimer }
 const rooms = new Map();
 
+function pickWeightedMap(room) {
+  const weights = room.mapWeights;
+  const entries = Object.entries(weights);
+  const totalWeight = entries.reduce((sum, [_, w]) => sum + w, 0);
+  const rand = Math.random() * totalWeight;
+  let cum = 0;
+  for (const [map, weight] of entries) {
+    cum += weight;
+    if (rand < cum) return map;
+  }
+  return MAP_LIST[0]; // fallback
+}
+
 function startMatch(roomId) {
   const room = rooms.get(roomId);
   room.state = 'in_match';
-  const map = ["res://map1.tscn","res://map2.tscn","res://map3.tscn"][
-    Math.floor(Math.random() * 3)
-  ];
-  room.players.forEach(ws => ws.send(JSON.stringify({ type: 'match_start', map_path: map })));
-  room.matchTimer = setTimeout(() => endMatch(roomId), 60000);
+
+  room.expected_total = room.players.size;
+  room.left_midmatch = 0;
+
+  const map = pickWeightedMap(room);
+
+  // reset all weights a bit
+  for (const m in room.mapWeights) {
+    room.mapWeights[m] = Math.max(1, room.mapWeights[m] - 1);
+  }
+  // give chosen map high weight so it's less likely next time
+  room.mapWeights[map] = 100;
+
+  room.currentMap = map;
+
+  room.players.forEach(ws =>
+    ws.send(JSON.stringify({ type: 'match_start', map_path: map }))
+  );
+
+  room.matchTimer = setTimeout(() => endMatch(roomId), 120000);
 }
 
 function endMatch(roomId) {
   const room = rooms.get(roomId);
   room.state = 'waiting';
+
+  delete room.left_midmatch;
+  delete room.expected_total;
+
   room.players.forEach(ws => ws.send(JSON.stringify({ type: 'match_end' })));
   // promote spectators
   room.spectators.forEach(ws => room.players.add(ws));
   room.spectators.clear();
   broadcastPlayerCount(roomId, room);
-  room.matchTimer = setTimeout(() => startMatch(roomId), 10000);
+  for (const m of MAP_LIST) {
+    room.mapWeights[m] = 1;
+  }
+  startMatch(roomId);
+}
+
+function maybeEndEarly(roomId) {
+  const room = rooms.get(roomId);
+  const totalPresent = room.players.size + room.spectators.size;
+
+  // Count only active participants
+  if (room.spectators.size >= totalPresent) {
+    clearTimeout(room.matchTimer);
+    endMatch(roomId);
+  }
 }
 
 wss.on('connection', (ws) => {
   const id = ws.roomId;
   if (!rooms.has(id)) {
-    rooms.set(id, { players: new Set(), spectators: new Set(), state: 'waiting', matchTimer: null });
+    const mapWeights = {};
+    for (const map of MAP_LIST) {
+      mapWeights[map] = 1;
+    }
+
+    rooms.set(id, {
+      players: new Set(),
+      spectators: new Set(),
+      state: 'waiting',
+      matchTimer: null,
+      mapWeights: mapWeights
+    });
   }
   const room = rooms.get(id);
 
@@ -170,6 +230,7 @@ wss.on('connection', (ws) => {
     room.spectators.add(ws);
     ws.send(JSON.stringify({ type: 'spectator_mode' }));
   } else {
+    ws.playerId = uuid();
     room.players.add(ws);
     ws.send(JSON.stringify({ type: 'joined', room_id: id, player_id: ws.playerId }));
     broadcastPlayerCount(id, room);
@@ -185,7 +246,31 @@ wss.on('connection', (ws) => {
     if (!canSend(ws)) return;
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
-    if (msg.type === 'request_first_map') return;
+    if (msg.type === 'request_first_map') {
+      const room = rooms.get(ws.roomId);
+      if (!room) return;
+
+      const mapPath = room.currentMap;
+      if (!mapPath) return;
+
+      room.currentMap = mapPath;
+
+      ws.send(JSON.stringify({
+        type: 'match_start',
+        map_path: mapPath
+      }));
+    }
+
+    if (msg.type === 'finish' && room.state === 'in_match') {
+      room.players.delete(ws);
+      room.spectators.add(ws);
+      ws.send(JSON.stringify({ type: 'spectator_mode' }));
+      broadcastPlayerCount(roomId, room);
+
+      maybeEndEarly(roomId); // 👈 Check if everyone’s done
+      return;
+    }
+
     if (room.state === 'in_match') {
       room.players.forEach(p => {
         if (p !== ws && p.readyState === ws.OPEN) p.send(data);
@@ -197,7 +282,11 @@ wss.on('connection', (ws) => {
     clearTimeout(room.matchTimer);
     room.players.delete(ws);
     room.spectators.delete(ws);
-  
+
+    if (room.state === 'in_match') {
+      room.left_midmatch += 1;
+    }
+
     if (room.players.size === 0) {
       rooms.delete(id);
       // Supabase delete wrapped in async IIFE
