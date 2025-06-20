@@ -65,7 +65,7 @@ app.post("/auth/register", async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const { data: user, error: insErr } = await supabase
       .from("players").insert([{ email, username, password_hash: hash }])
-      .select("id,username,email").single();
+      .select("id,username,email,cheese_balance").single();
     if (insErr) throw insErr;
 
     res.status(201).json({ id: user.id, username: user.username });
@@ -82,18 +82,38 @@ app.post("/auth/login", async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: "Missing fields" });
 
     const { data: user, error: selErr } = await supabase
-      .from("players").select("id,username,password_hash").eq("email", email).single();
+      .from("players").select("id,username,password_hash,cheese_balance").eq("email", email).single();
     if (selErr) return res.status(400).json({ error: "Invalid credentials" });
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(400).json({ error: "Invalid credentials" });
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token: token, username: user?.username ?? "unknown" });
+    res.json({ token: token, username: user?.username ?? "unknown", cheese: user.cheese_balance || 0 });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// cheese: award
+app.post("/cheese/award", async (req, res) => {
+  const auth = req.headers["authorization"];
+  if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Auth required" });
+  const token = auth.split(" ")[1];
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+  const { amount } = req.body;
+  if (typeof amount !== "number" || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+
+  const { data, error } = await supabase.rpc("increment_cheese", {
+    player_id: decoded.id,
+    amount
+  });
+
+  if (error) return res.status(500).json({ error: "Could not update cheese" });
+
+  res.json({ message: "Cheese awarded", new_balance: data });
 });
 
 // Rooms: Create
@@ -305,11 +325,16 @@ wss.on('connection', (ws) => {
 });
 
 server.on('upgrade', (req, sock, head) => {
-  const m = req.url.match(/^\/rooms\/([^/]+)\/ws$/);
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const m = url.pathname.match(/^\/rooms\/([^/]+)\/ws$/);
   if (!m) return sock.destroy();
   const rid = m[1];
+  const pid = url.searchParams.get("player_id"); // 👈 GET player_id from URL
+  if (!pid) return sock.destroy(); // no id = no mercy
+
   wss.handleUpgrade(req, sock, head, ws => {
     ws.roomId = rid;
+    ws.playerId = pid; // 👈 assign to socket
     wss.emit('connection', ws);
   });
 });
