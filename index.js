@@ -263,6 +263,12 @@ wss.on('connection', (ws) => {
     if (room.players.size === 1) startMatch(id);
   }
 
+  if (room.state === 'in_match' && room.players.size === 0 && room.spectators.size === 0) {
+    console.log("⏹️ Match was running but no real players, resetting to 'waiting'...");
+    clearTimeout(room.matchTimer);
+    room.state = 'waiting';
+  }
+
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
