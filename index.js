@@ -231,6 +231,7 @@ function maybeEndEarly(roomId) {
 }
 
 wss.on('connection', (ws) => {
+  const roomId = ws.roomId;
   const id = ws.roomId;
   if (!rooms.has(id)) {
     const mapWeights = {};
