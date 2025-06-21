@@ -207,7 +207,10 @@ function endMatch(roomId) {
 
   room.players.forEach(ws => ws.send(JSON.stringify({ type: 'match_end' })));
   // promote spectators
-  room.spectators.forEach(ws => room.players.add(ws));
+  room.spectators.forEach(ws => {
+    room.players.add(ws);
+    ws.send(JSON.stringify({ type: 'player_mode' }));
+  });
   room.spectators.clear();
   broadcastPlayerCount(roomId, room);
   for (const m of MAP_LIST) {
@@ -246,13 +249,16 @@ wss.on('connection', (ws) => {
   const room = rooms.get(id);
 
   // assign role
+  ws.playerId = uuid();
+
   if (room.state === 'in_match') {
     room.spectators.add(ws);
+    ws.send(JSON.stringify({ type: 'joined', room_id: id, player_id: ws.playerId }));
     ws.send(JSON.stringify({ type: 'spectator_mode' }));
   } else {
-    ws.playerId = uuid();
     room.players.add(ws);
     ws.send(JSON.stringify({ type: 'joined', room_id: id, player_id: ws.playerId }));
+    ws.send(JSON.stringify({ type: 'player_mode' }));
     broadcastPlayerCount(id, room);
     if (room.players.size === 1) startMatch(id);
   }
