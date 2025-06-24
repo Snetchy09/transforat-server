@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { WebSocketServer } from "ws";
-import https from "https";
+import http from "http";
 import { v4 as uuid } from 'uuid';
 
 dotenv.config();
@@ -155,7 +155,7 @@ app.post("/chat/:room_id", (req, res) => {
 });
 
 // ─── WEBSOCKET + MATCH LIFECYCLE ─────────────────────
-const server = https.createServer(app);
+const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 // Room state: { players, spectators, state, matchTimer }
 const rooms = new Map();
@@ -362,5 +362,5 @@ const interval = setInterval(() => {
 }, 30000);
 process.on('SIGINT', () => { clearInterval(interval); wss.clients.forEach(ws => ws.terminate()); server.close(); });
 
-const PORT = process.env.PORT || 443;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
